@@ -74,6 +74,13 @@ jobs:
             esac
           fi
       
+      - name: Create safe artifact name
+        id: artifact_name
+        run: |
+          TIME_SLOT="${{ steps.time_slot.outputs.time_slot }}"
+          SAFE_NAME=$(echo "$TIME_SLOT" | sed 's/:/_/g')
+          echo "artifact_name=briefing-data-$SAFE_NAME" >> $GITHUB_OUTPUT
+      
       - name: Run market briefing
         run: |
           echo "실행 시간대: ${{ steps.time_slot.outputs.time_slot }}"
@@ -83,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: briefing-data-${{ steps.time_slot.outputs.time_slot }}
+          name: ${{ steps.artifact_name.outputs.artifact_name }}
           path: |
             briefing_*.json
             briefing_system.log
@@ -97,6 +104,7 @@ jobs:
           channel: '#market-briefing'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
 
   # 시스템 상태 모니터링 (매일 오전 6시)
   system-monitor:
@@ -136,4 +144,5 @@ jobs:
           channel: '#market-briefing'
           text: '시스템 상태 점검 완료'
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true 
