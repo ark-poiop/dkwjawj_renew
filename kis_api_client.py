@@ -3,6 +3,7 @@
 """
 한국투자증권 Open API 클라이언트
 실시간 시장 데이터 수집 및 정제
+공식 GitHub API 사용
 """
 
 import os
@@ -19,193 +20,69 @@ logger = logging.getLogger(__name__)
 
 
 class KISAPIClient:
-    """한국투자증권 Open API 클라이언트"""
+    """한국투자증권 Open API 클라이언트 (공식 API 사용)"""
     
     def __init__(self):
-        # 환경변수에서 API 키 로드
-        self.app_key = os.getenv('KIS_APP_KEY')
-        self.app_secret = os.getenv('KIS_APP_SECRET')
-        self.account_no = os.getenv('KIS_ACCOUNT_NO')
-        
-        # API 엔드포인트
-        self.base_url = "https://openapi.koreainvestment.com:9443"
-        self.auth_url = f"{self.base_url}/oauth2/tokenP"
-        self.data_url = f"{self.base_url}/uapi/domestic-stock/v1/quotations"
-        self.overseas_url = f"{self.base_url}/uapi/overseas-price/v1/quotations"
-        
-        # 인증 토큰
-        self.access_token = None
-        self.token_expires = None
-        
-        # API 호출 제한 관리
-        self.last_call_time = 0
-        self.call_interval = 0.1  # 100ms 간격
-        
-        if not all([self.app_key, self.app_secret, self.account_no]):
-            logger.warning("KIS API 키가 설정되지 않았습니다. 샘플 데이터를 사용합니다.")
-    
-    def _rate_limit(self):
-        """API 호출 제한 준수"""
-        current_time = time.time()
-        time_since_last_call = current_time - self.last_call_time
-        if time_since_last_call < self.call_interval:
-            time.sleep(self.call_interval - time_since_last_call)
-        self.last_call_time = time.time()
-    
-    def _get_access_token(self) -> str:
-        """액세스 토큰 발급"""
-        if self.access_token and self.token_expires and datetime.now() < self.token_expires:
-            return self.access_token
-        
-        if not self.app_key or not self.app_secret:
-            logger.warning("API 키가 없어 토큰 발급을 건너뜁니다.")
-            return None
-        
+        # 공식 API 인증 모듈 사용
         try:
-            headers = {
-                "content-type": "application/json"
-            }
-            body = {
-                "grant_type": "client_credentials",
-                "appkey": self.app_key,
-                "appsecret": self.app_secret
-            }
+            from kis_auth import auth, getTREnv
+            self.auth = auth
+            self.getTREnv = getTREnv
+            self.trenv = None
             
-            # 토큰 발급 재시도 로직
-            for attempt in range(3):
-                try:
-                    response = requests.post(
-                        self.auth_url, 
-                        headers=headers, 
-                        data=json.dumps(body),
-                        timeout=30,
-                        verify=True
-                    )
-                    response.raise_for_status()
-                    
-                    data = response.json()
-                    self.access_token = data.get('access_token')
-                    expires_in = data.get('expires_in', 86400)  # 24시간
-                    self.token_expires = datetime.now() + timedelta(seconds=expires_in)
-                    
-                    logger.info("액세스 토큰 발급 완료")
-                    return self.access_token
-                    
-                except requests.exceptions.ConnectionError as e:
-                    if attempt < 2:
-                        logger.warning(f"토큰 발급 연결 오류 (시도 {attempt + 1}/3): {e}")
-                        time.sleep(2 ** attempt)
-                        continue
-                    else:
-                        raise
-                except requests.exceptions.Timeout as e:
-                    if attempt < 2:
-                        logger.warning(f"토큰 발급 타임아웃 (시도 {attempt + 1}/3): {e}")
-                        time.sleep(2 ** attempt)
-                        continue
-                    else:
-                        raise
-            
-        except Exception as e:
-            logger.error(f"토큰 발급 실패: {e}")
-            return None
-    
-    def _make_request(self, url: str, params: Dict = None) -> Optional[Dict]:
-        """API 요청 실행"""
-        self._rate_limit()
-        
-        access_token = self._get_access_token()
-        if not access_token:
-            logger.warning("액세스 토큰이 없어 API 요청을 건너뜁니다.")
-            return None
-        
-        headers = {
-            "Content-Type": "application/json",
-            "authorization": f"Bearer {access_token}",
-            "appkey": self.app_key or "",
-            "appsecret": self.app_secret or "",
-            "tr_id": "FHKST01010100"  # 기본 TR ID
-        }
-        
-        try:
-            # 타임아웃 설정 및 재시도 로직
-            for attempt in range(3):
-                try:
-                    response = requests.get(
-                        url, 
-                        headers=headers, 
-                        params=params,
-                        timeout=30,
-                        verify=True
-                    )
-                    response.raise_for_status()
-                    return response.json()
-                except requests.exceptions.ConnectionError as e:
-                    if attempt < 2:
-                        logger.warning(f"연결 오류 (시도 {attempt + 1}/3): {e}")
-                        time.sleep(2 ** attempt)  # 지수 백오프
-                        continue
-                    else:
-                        raise
-                except requests.exceptions.Timeout as e:
-                    if attempt < 2:
-                        logger.warning(f"타임아웃 (시도 {attempt + 1}/3): {e}")
-                        time.sleep(2 ** attempt)
-                        continue
-                    else:
-                        raise
-        except Exception as e:
-            logger.error(f"API 요청 실패: {e}")
-            return None
+            # 인증 시도
+            if self.auth("vps"):  # 모의투자 환경으로 시작
+                self.trenv = self.getTREnv()
+                logger.info("한국투자증권 API 인증 성공 (모의투자)")
+            else:
+                logger.warning("한국투자증권 API 인증 실패. 샘플 데이터를 사용합니다.")
+                
+        except ImportError:
+            logger.warning("kis_auth 모듈을 찾을 수 없습니다. 샘플 데이터를 사용합니다.")
+            self.trenv = None
     
     def get_domestic_index(self, index_code: str = "0001") -> Optional[Dict]:
         """국내 지수 조회 (코스피: 0001, 코스닥: 1001)"""
-        if not self._get_access_token():
+        if not self.trenv:
             return self._get_sample_domestic_index(index_code)
         
-        url = f"{self.data_url}/inquire-price"
-        params = {
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": index_code
-        }
-        
-        result = self._make_request(url, params)
-        if result and result.get('rt_cd') == '0':
-            return result.get('output', {})
-        return None
+        try:
+            from domestic_stock_functions import inquire_index_price
+            
+            result = inquire_index_price("J", index_code)
+            if result:
+                return result
+            else:
+                logger.warning("API 조회 실패, 샘플 데이터 사용")
+                return self._get_sample_domestic_index(index_code)
+                
+        except ImportError:
+            logger.warning("domestic_stock_functions 모듈을 찾을 수 없습니다. 샘플 데이터를 사용합니다.")
+            return self._get_sample_domestic_index(index_code)
     
     def get_overseas_index(self, index_code: str = "SPX") -> Optional[Dict]:
         """해외 지수 조회 (S&P500: SPX, NASDAQ: IXIC, DOW: DJI)"""
-        if not self._get_access_token():
-            return self._get_sample_overseas_index(index_code)
-        
-        url = f"{self.overseas_url}/price"
-        params = {
-            "AUTH": "",
-            "EXCD": "NAS",  # NASDAQ
-            "SYMB": index_code
-        }
-        
-        result = self._make_request(url, params)
-        if result and result.get('rt_cd') == '0':
-            return result.get('output', {})
-        return None
+        # 해외 지수는 별도 API가 필요하므로 샘플 데이터 사용
+        return self._get_sample_overseas_index(index_code)
     
     def get_stock_price(self, stock_code: str) -> Optional[Dict]:
         """개별 종목 가격 조회"""
-        if not self._get_access_token():
+        if not self.trenv:
             return self._get_sample_stock_price(stock_code)
         
-        url = f"{self.data_url}/inquire-price"
-        params = {
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": stock_code
-        }
-        
-        result = self._make_request(url, params)
-        if result and result.get('rt_cd') == '0':
-            return result.get('output', {})
-        return None
+        try:
+            from domestic_stock_functions import get_stock_price
+            
+            result = get_stock_price(stock_code)
+            if result:
+                return result
+            else:
+                logger.warning("API 조회 실패, 샘플 데이터 사용")
+                return self._get_sample_stock_price(stock_code)
+                
+        except ImportError:
+            logger.warning("domestic_stock_functions 모듈을 찾을 수 없습니다. 샘플 데이터를 사용합니다.")
+            return self._get_sample_stock_price(stock_code)
     
     def get_market_data(self) -> Dict[str, Any]:
         """전체 시장 데이터 수집"""
@@ -233,11 +110,11 @@ class KISAPIClient:
             
             kosdaq_data = self.get_domestic_index("1001")  # 코스닥
             if kosdaq_data:
-                market_data["indices"]["KOSDAQ"] = float(kosdaq_data.get('stck_prpr', 0))
-                market_data["changes"]["KOSDAQ"] = float(kosdaq_data.get('prdy_vrss', 0))
+                market_data["indices"]["KOSDAQ"] = float(kospi_data.get('stck_prpr', 0))
+                market_data["changes"]["KOSDAQ"] = float(kospi_data.get('prdy_vrss', 0))
                 collected_count += 1
             
-            # 해외 지수
+            # 해외 지수 (샘플 데이터)
             sp500_data = self.get_overseas_index("SPX")  # S&P500
             if sp500_data:
                 market_data["indices"]["S&P500"] = float(sp500_data.get('last', 0))
@@ -272,102 +149,129 @@ class KISAPIClient:
             "006400": "삼성SDI"
         }
         
-        for code, name in major_stocks.items():
-            stock_data = self.get_stock_price(code)
-            if stock_data:
-                price = float(stock_data.get('stck_prpr', 0))
-                change = float(stock_data.get('prdy_vrss', 0))
-                if price > 0:
-                    market_data["stocks"][name] = change
+        for stock_code, stock_name in major_stocks.items():
+            try:
+                stock_data = self.get_stock_price(stock_code)
+                if stock_data:
+                    market_data["stocks"][stock_name] = {
+                        "code": stock_code,
+                        "price": float(stock_data.get('stck_prpr', 0)),
+                        "change": float(stock_data.get('prdy_vrss', 0)),
+                        "change_rate": float(stock_data.get('prdy_ctrt', 0))
+                    }
+            except Exception as e:
+                logger.warning(f"종목 {stock_name} 데이터 수집 실패: {e}")
         
-        # 섹터별 성과 (샘플 데이터)
-        market_data["sectors"] = {
-            "반도체": 2.1,
-            "AI": 1.8,
-            "바이오": -0.5,
-            "금융": 0.3,
-            "자동차": 1.2
-        }
-        
-        # 주요 이슈 (샘플)
-        market_data["issues"] = [
-            "FOMC 결과 발표",
-            "반도체 수급 개선",
-            "AI 투자 확대",
-            "글로벌 경기 우려"
-        ]
-        
-        # 예정 이벤트 (샘플)
-        market_data["events"] = [
-            "주요 기업 실적 발표",
-            "한국은행 금리 결정",
-            "경제지표 발표"
-        ]
-        
-        logger.info("시장 데이터 수집 완료")
         return market_data
     
     def _get_sample_domestic_index(self, index_code: str) -> Dict:
         """샘플 국내 지수 데이터"""
-        sample_data = {
-            "0001": {  # 코스피
+        if index_code == "0001":  # 코스피
+            return {
                 "stck_prpr": "2500.12",
-                "prdy_vrss": "12.45",
-                "prdy_ctrt": "0.50"
-            },
-            "1001": {  # 코스닥
-                "stck_prpr": "800.45",
-                "prdy_vrss": "9.67",
-                "prdy_ctrt": "1.22"
+                "prdy_vrss": "15.23",
+                "prdy_ctrt": "0.61",
+                "acml_tr_pbmn": "1234567890",
+                "acml_vol": "987654321"
             }
-        }
-        return sample_data.get(index_code, {})
+        elif index_code == "1001":  # 코스닥
+            return {
+                "stck_prpr": "800.45",
+                "prdy_vrss": "8.12",
+                "prdy_ctrt": "1.02",
+                "acml_tr_pbmn": "5678901234",
+                "acml_vol": "123456789"
+            }
+        else:
+            return {
+                "stck_prpr": "1000.00",
+                "prdy_vrss": "0.00",
+                "prdy_ctrt": "0.00",
+                "acml_tr_pbmn": "0",
+                "acml_vol": "0"
+            }
     
     def _get_sample_overseas_index(self, index_code: str) -> Dict:
         """샘플 해외 지수 데이터"""
-        sample_data = {
-            "SPX": {  # S&P500
+        if index_code == "SPX":  # S&P500
+            return {
                 "last": "5500.12",
-                "diff": "43.67",
-                "diff_rt": "0.80"
-            },
-            "IXIC": {  # NASDAQ
-                "last": "17900.45",
-                "diff": "195.23",
-                "diff_rt": "1.10"
-            },
-            "DJI": {  # DOW
-                "last": "38500.0",
-                "diff": "115.50",
-                "diff_rt": "0.30"
+                "diff": "44.23",
+                "change": "0.81",
+                "volume": "2345678901"
             }
-        }
-        return sample_data.get(index_code, {})
+        elif index_code == "IXIC":  # NASDAQ
+            return {
+                "last": "17900.45",
+                "diff": "195.67",
+                "change": "1.10",
+                "volume": "3456789012"
+            }
+        elif index_code == "DJI":  # DOW
+            return {
+                "last": "38500.00",
+                "diff": "115.50",
+                "change": "0.30",
+                "volume": "4567890123"
+            }
+        else:
+            return {
+                "last": "1000.00",
+                "diff": "0.00",
+                "change": "0.00",
+                "volume": "0"
+            }
     
     def _get_sample_stock_price(self, stock_code: str) -> Dict:
-        """샘플 종목 가격 데이터"""
+        """샘플 주식 가격 데이터"""
         sample_data = {
             "005930": {  # 삼성전자
                 "stck_prpr": "75000",
-                "prdy_vrss": "1125",
-                "prdy_ctrt": "1.52"
+                "prdy_vrss": "1500",
+                "prdy_ctrt": "2.04",
+                "acml_tr_pbmn": "1234567890",
+                "acml_vol": "987654321"
             },
             "000660": {  # SK하이닉스
                 "stck_prpr": "125000",
-                "prdy_vrss": "3875",
-                "diff_rt": "3.20"
+                "prdy_vrss": "2500",
+                "prdy_ctrt": "2.04",
+                "acml_tr_pbmn": "5678901234",
+                "acml_vol": "123456789"
+            },
+            "035420": {  # NAVER
+                "stck_prpr": "180000",
+                "prdy_vrss": "3000",
+                "prdy_ctrt": "1.69",
+                "acml_tr_pbmn": "3456789012",
+                "acml_vol": "234567890"
             }
         }
-        return sample_data.get(stock_code, {})
+        
+        return sample_data.get(stock_code, {
+            "stck_prpr": "10000",
+            "prdy_vrss": "0",
+            "prdy_ctrt": "0.00",
+            "acml_tr_pbmn": "0",
+            "acml_vol": "0"
+        })
 
 
 def main():
     """테스트 실행"""
     client = KISAPIClient()
-    market_data = client.get_market_data()
     
-    print("=== 수집된 시장 데이터 ===")
-    print(json.dumps(market_data, indent=2, ensure_ascii=False))
+    # 코스피 지수 조회
+    kospi_data = client.get_domestic_index("0001")
+    print(f"코스피: {kospi_data}")
+    
+    # 삼성전자 주가 조회
+    samsung_data = client.get_stock_price("005930")
+    print(f"삼성전자: {samsung_data}")
+    
+    # 전체 시장 데이터 조회
+    market_data = client.get_market_data()
+    print(f"시장 데이터: {market_data}")
 
 
 if __name__ == "__main__":
