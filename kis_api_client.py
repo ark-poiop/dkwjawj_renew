@@ -71,16 +71,40 @@ class KISAPIClient:
                 "appsecret": self.app_secret
             }
             
-            response = requests.post(self.auth_url, headers=headers, data=json.dumps(body))
-            response.raise_for_status()
-            
-            data = response.json()
-            self.access_token = data.get('access_token')
-            expires_in = data.get('expires_in', 86400)  # 24시간
-            self.token_expires = datetime.now() + timedelta(seconds=expires_in)
-            
-            logger.info("액세스 토큰 발급 완료")
-            return self.access_token
+            # 토큰 발급 재시도 로직
+            for attempt in range(3):
+                try:
+                    response = requests.post(
+                        self.auth_url, 
+                        headers=headers, 
+                        data=json.dumps(body),
+                        timeout=30,
+                        verify=True
+                    )
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    self.access_token = data.get('access_token')
+                    expires_in = data.get('expires_in', 86400)  # 24시간
+                    self.token_expires = datetime.now() + timedelta(seconds=expires_in)
+                    
+                    logger.info("액세스 토큰 발급 완료")
+                    return self.access_token
+                    
+                except requests.exceptions.ConnectionError as e:
+                    if attempt < 2:
+                        logger.warning(f"토큰 발급 연결 오류 (시도 {attempt + 1}/3): {e}")
+                        time.sleep(2 ** attempt)
+                        continue
+                    else:
+                        raise
+                except requests.exceptions.Timeout as e:
+                    if attempt < 2:
+                        logger.warning(f"토큰 발급 타임아웃 (시도 {attempt + 1}/3): {e}")
+                        time.sleep(2 ** attempt)
+                        continue
+                    else:
+                        raise
             
         except Exception as e:
             logger.error(f"토큰 발급 실패: {e}")
@@ -90,18 +114,46 @@ class KISAPIClient:
         """API 요청 실행"""
         self._rate_limit()
         
+        access_token = self._get_access_token()
+        if not access_token:
+            logger.warning("액세스 토큰이 없어 API 요청을 건너뜁니다.")
+            return None
+        
         headers = {
             "Content-Type": "application/json",
-            "authorization": f"Bearer {self._get_access_token()}" if self._get_access_token() else "",
+            "authorization": f"Bearer {access_token}",
             "appkey": self.app_key or "",
             "appsecret": self.app_secret or "",
             "tr_id": "FHKST01010100"  # 기본 TR ID
         }
         
         try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            return response.json()
+            # 타임아웃 설정 및 재시도 로직
+            for attempt in range(3):
+                try:
+                    response = requests.get(
+                        url, 
+                        headers=headers, 
+                        params=params,
+                        timeout=30,
+                        verify=True
+                    )
+                    response.raise_for_status()
+                    return response.json()
+                except requests.exceptions.ConnectionError as e:
+                    if attempt < 2:
+                        logger.warning(f"연결 오류 (시도 {attempt + 1}/3): {e}")
+                        time.sleep(2 ** attempt)  # 지수 백오프
+                        continue
+                    else:
+                        raise
+                except requests.exceptions.Timeout as e:
+                    if attempt < 2:
+                        logger.warning(f"타임아웃 (시도 {attempt + 1}/3): {e}")
+                        time.sleep(2 ** attempt)
+                        continue
+                    else:
+                        raise
         except Exception as e:
             logger.error(f"API 요청 실패: {e}")
             return None
@@ -169,34 +221,47 @@ class KISAPIClient:
             "timestamp": datetime.now().isoformat()
         }
         
-        # 국내 지수
-        kospi_data = self.get_domestic_index("0001")  # 코스피
-        kosdaq_data = self.get_domestic_index("1001")  # 코스닥
+        collected_count = 0
         
-        if kospi_data:
-            market_data["indices"]["KOSPI"] = float(kospi_data.get('stck_prpr', 0))
-            market_data["changes"]["KOSPI"] = float(kospi_data.get('prdy_vrss', 0))
+        try:
+            # 국내 지수
+            kospi_data = self.get_domestic_index("0001")  # 코스피
+            if kospi_data:
+                market_data["indices"]["KOSPI"] = float(kospi_data.get('stck_prpr', 0))
+                market_data["changes"]["KOSPI"] = float(kospi_data.get('prdy_vrss', 0))
+                collected_count += 1
+            
+            kosdaq_data = self.get_domestic_index("1001")  # 코스닥
+            if kosdaq_data:
+                market_data["indices"]["KOSDAQ"] = float(kosdaq_data.get('stck_prpr', 0))
+                market_data["changes"]["KOSDAQ"] = float(kosdaq_data.get('prdy_vrss', 0))
+                collected_count += 1
+            
+            # 해외 지수
+            sp500_data = self.get_overseas_index("SPX")  # S&P500
+            if sp500_data:
+                market_data["indices"]["S&P500"] = float(sp500_data.get('last', 0))
+                market_data["changes"]["S&P500"] = float(sp500_data.get('diff', 0))
+                collected_count += 1
+            
+            nasdaq_data = self.get_overseas_index("IXIC")  # NASDAQ
+            if nasdaq_data:
+                market_data["indices"]["NASDAQ"] = float(nasdaq_data.get('last', 0))
+                market_data["changes"]["NASDAQ"] = float(nasdaq_data.get('diff', 0))
+                collected_count += 1
+            
+            dow_data = self.get_overseas_index("DJI")  # DOW
+            if dow_data:
+                market_data["indices"]["DOW"] = float(dow_data.get('last', 0))
+                market_data["changes"]["DOW"] = float(dow_data.get('diff', 0))
+                collected_count += 1
+                
+        except Exception as e:
+            logger.error(f"시장 데이터 수집 중 오류 발생: {e}")
+            # 오류가 발생해도 수집된 데이터는 유지
         
-        if kosdaq_data:
-            market_data["indices"]["KOSDAQ"] = float(kosdaq_data.get('stck_prpr', 0))
-            market_data["changes"]["KOSDAQ"] = float(kosdaq_data.get('prdy_vrss', 0))
-        
-        # 해외 지수
-        sp500_data = self.get_overseas_index("SPX")  # S&P500
-        nasdaq_data = self.get_overseas_index("IXIC")  # NASDAQ
-        dow_data = self.get_overseas_index("DJI")  # DOW
-        
-        if sp500_data:
-            market_data["indices"]["S&P500"] = float(sp500_data.get('last', 0))
-            market_data["changes"]["S&P500"] = float(sp500_data.get('diff', 0))
-        
-        if nasdaq_data:
-            market_data["indices"]["NASDAQ"] = float(nasdaq_data.get('last', 0))
-            market_data["changes"]["NASDAQ"] = float(nasdaq_data.get('diff', 0))
-        
-        if dow_data:
-            market_data["indices"]["DOW"] = float(dow_data.get('last', 0))
-            market_data["changes"]["DOW"] = float(dow_data.get('diff', 0))
+        logger.info(f"시장 데이터 수집 완료: {collected_count}개 지수")
+        return market_data
         
         # 주요 종목
         major_stocks = {
