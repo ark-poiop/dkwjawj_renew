@@ -1,0 +1,22 @@
+# 자동 시장 브리핑 시스템 의존성
+# Python 3.9+ 필요
+
+# HTTP 요청
+requests>=2.28.0
+
+# 날짜/시간 처리
+python-dateutil>=2.8.0
+
+# 로깅 및 유틸리티
+colorlog>=6.7.0
+
+# 데이터 처리 (선택사항)
+pandas>=1.5.0
+numpy>=1.24.0
+
+# 환경변수 관리 (선택사항)
+python-dotenv>=1.0.0
+
+# 테스트 (개발용)
+pytest>=7.0.0
+pytest-cov>=4.0.0 

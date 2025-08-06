@@ -1,0 +1,141 @@
+name: Market Briefing Automation
+
+on:
+  # 스케줄 실행 (평일만)
+  schedule:
+    # 07:00 - 미국 마켓 마감 브리핑 (한국시간)
+    - cron: '0 7 * * 1-5'
+    # 08:00 - 한국시장 프리뷰
+    - cron: '0 8 * * 1-5'
+    # 12:00 - 한국시장 중간 브리핑
+    - cron: '0 12 * * 1-5'
+    # 15:40 - 한국시장 마감 브리핑
+    - cron: '40 15 * * 1-5'
+    # 19:00 - 미국 마켓 프리뷰
+    - cron: '0 19 * * 1-5'
+  
+  # 수동 실행
+  workflow_dispatch:
+    inputs:
+      time_slot:
+        description: '실행할 시간대'
+        required: true
+        default: '07:00'
+        type: choice
+        options:
+          - '07:00'
+          - '08:00'
+          - '12:00'
+          - '15:40'
+          - '19:00'
+          - 'all'
+
+jobs:
+  market-briefing:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      
+      - name: Set environment variables
+        run: |
+          echo "KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}" >> $GITHUB_ENV
+          echo "KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}" >> $GITHUB_ENV
+          echo "KIS_ACCOUNT_NO=${{ secrets.KIS_ACCOUNT_NO }}" >> $GITHUB_ENV
+          echo "THREADS_API_KEY=${{ secrets.THREADS_API_KEY }}" >> $GITHUB_ENV
+          echo "THREADS_ACCESS_TOKEN=${{ secrets.THREADS_ACCESS_TOKEN }}" >> $GITHUB_ENV
+          echo "THREADS_USER_ID=${{ secrets.THREADS_USER_ID }}" >> $GITHUB_ENV
+      
+      - name: Determine time slot
+        id: time_slot
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "time_slot=${{ github.event.inputs.time_slot }}" >> $GITHUB_OUTPUT
+          else
+            # cron에서 시간대 결정
+            HOUR=$(date -u +%H)
+            case $HOUR in
+              22) echo "time_slot=07:00" >> $GITHUB_OUTPUT ;;  # UTC 22:00 = KST 07:00
+              23) echo "time_slot=08:00" >> $GITHUB_OUTPUT ;;  # UTC 23:00 = KST 08:00
+              3) echo "time_slot=12:00" >> $GITHUB_OUTPUT ;;   # UTC 03:00 = KST 12:00
+              6) echo "time_slot=15:40" >> $GITHUB_OUTPUT ;;   # UTC 06:40 = KST 15:40
+              10) echo "time_slot=19:00" >> $GITHUB_OUTPUT ;;  # UTC 10:00 = KST 19:00
+              *) echo "time_slot=07:00" >> $GITHUB_OUTPUT ;;
+            esac
+          fi
+      
+      - name: Run market briefing
+        run: |
+          echo "실행 시간대: ${{ steps.time_slot.outputs.time_slot }}"
+          python auto_briefing_system.py --time ${{ steps.time_slot.outputs.time_slot }} --save
+      
+      - name: Upload briefing data
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: briefing-data-${{ steps.time_slot.outputs.time_slot }}
+          path: |
+            briefing_*.json
+            briefing_system.log
+          retention-days: 7
+      
+      - name: Notify on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#market-briefing'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # 시스템 상태 모니터링 (매일 오전 6시)
+  system-monitor:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 6 * * 1-5'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      
+      - name: Set environment variables
+        run: |
+          echo "KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}" >> $GITHUB_ENV
+          echo "KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}" >> $GITHUB_ENV
+          echo "KIS_ACCOUNT_NO=${{ secrets.KIS_ACCOUNT_NO }}" >> $GITHUB_ENV
+          echo "THREADS_API_KEY=${{ secrets.THREADS_API_KEY }}" >> $GITHUB_ENV
+          echo "THREADS_ACCESS_TOKEN=${{ secrets.THREADS_ACCESS_TOKEN }}" >> $GITHUB_ENV
+          echo "THREADS_USER_ID=${{ secrets.THREADS_USER_ID }}" >> $GITHUB_ENV
+      
+      - name: Check system status
+        run: |
+          python auto_briefing_system.py --status
+      
+      - name: Send status report
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#market-briefing'
+          text: '시스템 상태 점검 완료'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
