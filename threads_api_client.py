@@ -7,6 +7,7 @@ Threads API 클라이언트
 
 import os
 import json
+import time
 import requests
 from typing import Dict, Optional, Any, List
 import logging
@@ -26,16 +27,17 @@ class ThreadsAPIClient:
         self.access_token = os.getenv('THREADS_ACCESS_TOKEN')
         self.user_id = os.getenv('THREADS_USER_ID')
         
-        # Threads API 엔드포인트 (올바른 Threads API)
+        # Threads API 엔드포인트 (공식 문서 기준)
         self.base_url = "https://graph.threads.net/v1.0"
-        self.post_url = f"{self.base_url}/me/threads"
+        self.create_container_url = f"{self.base_url}/me/threads"
+        self.publish_url = f"{self.base_url}/me/threads_publish"
         
         if not self.access_token:
             logger.warning("Threads 액세스 토큰이 설정되지 않았습니다. 게시 기능이 제한됩니다.")
     
     def post_thread(self, content: str, reply_to: Optional[str] = None) -> Optional[Dict]:
         """
-        Threads에 게시
+        Threads에 게시 (2단계 프로세스)
         
         Args:
             content: 게시할 내용
@@ -44,45 +46,90 @@ class ThreadsAPIClient:
         Returns:
             Dict: 게시 결과
         """
-        if not self.access_token:
-            logger.warning("Threads 액세스 토큰이 없어 게시를 건너뜁니다.")
+        if not self.access_token or not self.user_id:
+            logger.warning("Threads 액세스 토큰 또는 사용자 ID가 없어 게시를 건너뜁니다.")
             return self._simulate_post(content, reply_to)
         
         try:
-            # Threads API는 Facebook Graph API 기반이므로 access_token을 URL 파라미터로 전달
-            params = {
-                "access_token": self.access_token
-            }
+            # Step 1: 미디어 컨테이너 생성
+            logger.info("Step 1: 미디어 컨테이너 생성 중...")
+            container_result = self._create_media_container(content)
             
-            payload = {
-                "text": content,
-                "media_type": "text"
-            }
-            
-            if reply_to:
-                payload["reply_to"] = reply_to
-            
-            response = requests.post(self.post_url, params=params, json=payload)
-            logger.info(f"Status Code: {response.status_code}")
-            logger.info(f"Response Headers: {dict(response.headers)}")
-            logger.info(f"Response Text: {response.text}")
-            
-            if response.status_code != 200:
-                logger.error(f"API 오류: {response.status_code} - {response.text}")
+            if not container_result or 'id' not in container_result:
+                logger.error("미디어 컨테이너 생성 실패")
                 return self._simulate_post(content, reply_to)
             
-            try:
-                result = response.json()
-                logger.info(f"Threads 게시 성공: {result.get('id', 'unknown')}")
-                return result
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON 파싱 오류: {e}")
-                logger.error(f"응답 내용: {response.text}")
+            container_id = container_result['id']
+            logger.info(f"미디어 컨테이너 생성 완료: {container_id}")
+            
+            # Step 2: 컨테이너 게시 (30초 대기 권장)
+            logger.info("Step 2: 컨테이너 게시 중... (30초 대기)")
+            time.sleep(30)
+            
+            publish_result = self._publish_container(container_id)
+            
+            if not publish_result or 'id' not in publish_result:
+                logger.error("컨테이너 게시 실패")
                 return self._simulate_post(content, reply_to)
+            
+            final_post_id = publish_result['id']
+            logger.info(f"✅ Threads 게시 성공: {final_post_id}")
+            
+            return {
+                "id": final_post_id,
+                "container_id": container_id,
+                "success": True,
+                "content": content
+            }
             
         except Exception as e:
             logger.error(f"Threads 게시 실패: {e}")
             return self._simulate_post(content, reply_to)
+    
+    def _create_media_container(self, content: str) -> Optional[Dict]:
+        """Step 1: 미디어 컨테이너 생성"""
+        try:
+            params = {
+                "access_token": self.access_token,
+                "media_type": "TEXT",
+                "text": content
+            }
+            
+            response = requests.post(self.create_container_url, params=params)
+            logger.info(f"컨테이너 생성 Status Code: {response.status_code}")
+            logger.info(f"컨테이너 생성 Response: {response.text}")
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"컨테이너 생성 API 오류: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"컨테이너 생성 실패: {e}")
+            return None
+    
+    def _publish_container(self, container_id: str) -> Optional[Dict]:
+        """Step 2: 컨테이너 게시"""
+        try:
+            params = {
+                "access_token": self.access_token,
+                "creation_id": container_id
+            }
+            
+            response = requests.post(self.publish_url, params=params)
+            logger.info(f"컨테이너 게시 Status Code: {response.status_code}")
+            logger.info(f"컨테이너 게시 Response: {response.text}")
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.error(f"컨테이너 게시 API 오류: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"컨테이너 게시 실패: {e}")
+            return None
     
     def post_briefing(self, briefing_content: str, time_slot: str) -> Optional[Dict]:
         """
