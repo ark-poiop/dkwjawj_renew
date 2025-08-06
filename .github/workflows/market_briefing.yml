@@ -52,7 +52,6 @@ jobs:
         run: |
           echo "KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}" >> $GITHUB_ENV
           echo "KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}" >> $GITHUB_ENV
-          echo "THREADS_API_KEY=${{ secrets.THREADS_API_KEY }}" >> $GITHUB_ENV
           echo "THREADS_ACCESS_TOKEN=${{ secrets.THREADS_ACCESS_TOKEN }}" >> $GITHUB_ENV
           echo "THREADS_USER_ID=${{ secrets.THREADS_USER_ID }}" >> $GITHUB_ENV
       
@@ -89,7 +88,6 @@ jobs:
           from threads_api_client import ThreadsAPIClient
           client = ThreadsAPIClient()
           print('✅ Threads API 설정 확인:')
-          print('  - API Key:', '있음' if client.api_key else '없음')
           print('  - Access Token:', '있음' if client.access_token else '없음')
           print('  - User ID:', '있음' if client.user_id else '없음')
           print('  - Base URL:', client.base_url)
@@ -139,7 +137,6 @@ jobs:
         run: |
           echo "KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}" >> $GITHUB_ENV
           echo "KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}" >> $GITHUB_ENV
-          echo "THREADS_API_KEY=${{ secrets.THREADS_API_KEY }}" >> $GITHUB_ENV
           echo "THREADS_ACCESS_TOKEN=${{ secrets.THREADS_ACCESS_TOKEN }}" >> $GITHUB_ENV
           echo "THREADS_USER_ID=${{ secrets.THREADS_USER_ID }}" >> $GITHUB_ENV
       

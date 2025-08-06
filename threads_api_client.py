@@ -22,8 +22,7 @@ class ThreadsAPIClient:
     """Threads API 클라이언트"""
     
     def __init__(self):
-        # 환경변수에서 API 키 로드
-        self.api_key = os.getenv('THREADS_API_KEY')
+        # 환경변수에서 API 키 로드 (Threads API는 액세스 토큰만 사용)
         self.access_token = os.getenv('THREADS_ACCESS_TOKEN')
         self.user_id = os.getenv('THREADS_USER_ID')
         
@@ -31,8 +30,8 @@ class ThreadsAPIClient:
         self.base_url = "https://graph.threads.net/v1.0"
         self.post_url = f"{self.base_url}/me/threads"
         
-        if not all([self.api_key, self.access_token, self.user_id]):
-            logger.warning("Threads API 키가 설정되지 않았습니다. 게시 기능이 제한됩니다.")
+        if not self.access_token:
+            logger.warning("Threads 액세스 토큰이 설정되지 않았습니다. 게시 기능이 제한됩니다.")
     
     def post_thread(self, content: str, reply_to: Optional[str] = None) -> Optional[Dict]:
         """

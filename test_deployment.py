@@ -19,7 +19,6 @@ def test_environment():
     required_vars = [
         'KIS_APP_KEY',
         'KIS_APP_SECRET', 
-        'THREADS_API_KEY',
         'THREADS_ACCESS_TOKEN',
         'THREADS_USER_ID'
     ]
@@ -49,7 +48,6 @@ def test_threads_api():
         
         client = ThreadsAPIClient()
         
-        print(f"✅ API Key: {'있음' if client.api_key else '없음'}")
         print(f"✅ Access Token: {'있음' if client.access_token else '없음'}")
         print(f"✅ User ID: {'있음' if client.user_id else '없음'}")
         print(f"✅ Base URL: {client.base_url}")

@@ -58,7 +58,6 @@ GitHub 저장소 Settings → Secrets and variables → Actions에서 다음 키
 | `KIS_APP_KEY` | 한국투자증권 Open API 앱 키 |
 | `KIS_APP_SECRET` | 한국투자증권 Open API 앱 시크릿 |
 | `KIS_ACCOUNT_NO` | 한국투자증권 계좌번호 |
-| `THREADS_API_KEY` | Threads API 키 |
 | `THREADS_ACCESS_TOKEN` | Threads 액세스 토큰 |
 | `THREADS_USER_ID` | Threads 사용자 ID |
 | `SLACK_WEBHOOK_URL` | Slack 웹훅 URL (알림용) |
