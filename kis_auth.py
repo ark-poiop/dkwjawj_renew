@@ -12,8 +12,12 @@ import time
 import requests
 from datetime import datetime, timedelta
 import logging
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
+
+# .env 파일 로드
+load_dotenv()
 
 # 설정 파일 경로
 config_root = os.path.join(os.path.expanduser("~"), "KIS", "config")
@@ -89,7 +93,7 @@ class KISAuth:
             }
             
             logger.info(f"토큰 발급 시도 - 서버: {svr}")
-            response = requests.post(auth_url, headers=headers, data=json.dumps(body))
+            response = requests.post(auth_url, headers=headers, json=body)
             
             if response.status_code == 200:
                 data = response.json()

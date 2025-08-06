@@ -31,9 +31,9 @@ class KISAPIClient:
             self.trenv = None
             
             # 인증 시도
-            if self.auth("vps"):  # 모의투자 환경으로 시작
+            if self.auth("prod"):  # 실전투자 환경으로 시작
                 self.trenv = self.getTREnv()
-                logger.info("한국투자증권 API 인증 성공 (모의투자)")
+                logger.info("한국투자증권 API 인증 성공 (실전투자)")
             else:
                 logger.warning("한국투자증권 API 인증 실패. 샘플 데이터를 사용합니다.")
                 
