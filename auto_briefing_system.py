@@ -135,7 +135,7 @@ class AutoBriefingSystem:
     def get_system_status(self) -> Dict[str, Any]:
         """시스템 상태 조회"""
         return {
-            "kis_api_available": bool(self.kis_client.app_key),
+            "kis_api_available": bool(self.kis_client.trenv),
             "threads_api_available": bool(self.threads_publisher.client.access_token),
             "total_posts": len(self.threads_publisher.get_post_history()),
             "last_post": self.threads_publisher.get_post_stats().get("last_post"),
