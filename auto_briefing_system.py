@@ -12,6 +12,16 @@ import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+# .env 파일 로드 (로컬 개발용)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    logger = logging.getLogger(__name__)
+    logger.info(".env 파일 로드 완료")
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.info("python-dotenv가 설치되지 않았습니다. 시스템 환경변수를 사용합니다.")
+
 # 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
