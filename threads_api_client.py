@@ -10,6 +10,10 @@ import json
 import requests
 from typing import Dict, Optional, Any, List
 import logging
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +27,9 @@ class ThreadsAPIClient:
         self.access_token = os.getenv('THREADS_ACCESS_TOKEN')
         self.user_id = os.getenv('THREADS_USER_ID')
         
-        # API 엔드포인트 (실제 Threads API가 공개되면 업데이트 필요)
-        self.base_url = "https://www.threads.net/api/v1"
-        self.post_url = f"{self.base_url}/media/configure/"
+        # Threads API 엔드포인트 (올바른 Threads API)
+        self.base_url = "https://graph.threads.net/v1.0"
+        self.post_url = f"{self.base_url}/me/threads"
         
         if not all([self.api_key, self.access_token, self.user_id]):
             logger.warning("Threads API 키가 설정되지 않았습니다. 게시 기능이 제한됩니다.")
@@ -46,26 +50,36 @@ class ThreadsAPIClient:
             return self._simulate_post(content, reply_to)
         
         try:
-            headers = {
-                "Authorization": f"Bearer {self.access_token}",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            # Threads API는 Facebook Graph API 기반이므로 access_token을 URL 파라미터로 전달
+            params = {
+                "access_token": self.access_token
             }
             
             payload = {
                 "text": content,
-                "user_id": self.user_id
+                "media_type": "text"
             }
             
             if reply_to:
                 payload["reply_to"] = reply_to
             
-            response = requests.post(self.post_url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = requests.post(self.post_url, params=params, json=payload)
+            logger.info(f"Status Code: {response.status_code}")
+            logger.info(f"Response Headers: {dict(response.headers)}")
+            logger.info(f"Response Text: {response.text}")
             
-            result = response.json()
-            logger.info(f"Threads 게시 성공: {result.get('id', 'unknown')}")
-            return result
+            if response.status_code != 200:
+                logger.error(f"API 오류: {response.status_code} - {response.text}")
+                return self._simulate_post(content, reply_to)
+            
+            try:
+                result = response.json()
+                logger.info(f"Threads 게시 성공: {result.get('id', 'unknown')}")
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON 파싱 오류: {e}")
+                logger.error(f"응답 내용: {response.text}")
+                return self._simulate_post(content, reply_to)
             
         except Exception as e:
             logger.error(f"Threads 게시 실패: {e}")

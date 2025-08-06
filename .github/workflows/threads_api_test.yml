@@ -1,0 +1,123 @@
+name: Threads API Test
+
+on:
+  # 수동 실행
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: '테스트 유형'
+        required: true
+        default: 'connection'
+        type: choice
+        options:
+          - 'connection'
+          - 'post'
+          - 'briefing'
+  
+  # 스케줄 실행 (매일 오전 9시)
+  schedule:
+    - cron: '0 9 * * *'
+
+jobs:
+  threads-api-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Set environment variables
+        run: |
+          echo "KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}" >> $GITHUB_ENV
+          echo "KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}" >> $GITHUB_ENV
+          echo "THREADS_API_KEY=${{ secrets.THREADS_API_KEY }}" >> $GITHUB_ENV
+          echo "THREADS_ACCESS_TOKEN=${{ secrets.THREADS_ACCESS_TOKEN }}" >> $GITHUB_ENV
+          echo "THREADS_USER_ID=${{ secrets.THREADS_USER_ID }}" >> $GITHUB_ENV
+      
+      - name: Test Threads API Connection
+        if: github.event.inputs.test_type == 'connection' || github.event_name == 'schedule'
+        run: |
+          echo "🧪 Threads API 연결 테스트 시작..."
+          python -c "
+          from threads_api_client import ThreadsAPIClient
+          client = ThreadsAPIClient()
+          print('✅ API Key:', '있음' if client.api_key else '없음')
+          print('✅ Access Token:', '있음' if client.access_token else '없음')
+          print('✅ User ID:', '있음' if client.user_id else '없음')
+          print('✅ Base URL:', client.base_url)
+          print('✅ Post URL:', client.post_url)
+          "
+      
+      - name: Test Threads API Post
+        if: github.event.inputs.test_type == 'post'
+        run: |
+          echo "🧪 Threads API 게시 테스트 시작..."
+          python -c "
+          from threads_api_client import ThreadsAPIClient
+          import json
+          
+          client = ThreadsAPIClient()
+          test_content = '🧪 GitHub Actions에서 Threads API 테스트\n\n이것은 자동화된 테스트 게시물입니다.\n\n#ThreadsAPI #GitHubActions #테스트'
+          
+          try:
+              result = client.post_thread(test_content)
+              print('✅ 게시 성공!')
+              print('📝 결과:', json.dumps(result, indent=2, ensure_ascii=False))
+          except Exception as e:
+              print('❌ 게시 실패:', str(e))
+              exit(1)
+          "
+      
+      - name: Test Threads API Briefing
+        if: github.event.inputs.test_type == 'briefing'
+        run: |
+          echo "🧪 Threads API 브리핑 테스트 시작..."
+          python -c "
+          from threads_api_client import ThreadsAPIClient
+          import json
+          
+          client = ThreadsAPIClient()
+                    test_briefing = '🌅 시장 브리핑 테스트\n\n• S&P500 5,500.12pt (+0.8%)\n• 나스닥 17,900.45pt (+1.1%)\n• 다우 38,500pt (+0.3%)\n\n💡 테스트 관전포인트\n- GitHub Actions 자동화 테스트\n- Threads API 연동 확인\n\n#시장브리핑 #테스트 #ThreadsAPI'
+          
+          try:
+              result = client.post_briefing(test_briefing, '07:00')
+              print('✅ 브리핑 게시 성공!')
+              print('📝 결과:', json.dumps(result, indent=2, ensure_ascii=False))
+          except Exception as e:
+              print('❌ 브리핑 게시 실패:', str(e))
+              exit(1)
+          "
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: threads-api-test-results
+          path: |
+            briefing_system.log
+          retention-days: 3
+      
+      - name: Notify test results
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#market-briefing'
+          text: |
+            Threads API 테스트 결과:
+            - 테스트 유형: ${{ github.event.inputs.test_type || 'scheduled' }}
+            - 상태: ${{ job.status }}
+            - 실행 시간: ${{ github.run_id }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true 

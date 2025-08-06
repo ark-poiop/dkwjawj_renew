@@ -46,7 +46,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install -r requirements.txt
       
       - name: Set environment variables
         run: |
@@ -84,6 +84,16 @@ jobs:
       - name: Run market briefing
         run: |
           echo "실행 시간대: ${{ steps.time_slot.outputs.time_slot }}"
+          echo "🧪 Threads API 연결 확인..."
+          python -c "
+          from threads_api_client import ThreadsAPIClient
+          client = ThreadsAPIClient()
+          print('✅ Threads API 설정 확인:')
+          print('  - API Key:', '있음' if client.api_key else '없음')
+          print('  - Access Token:', '있음' if client.access_token else '없음')
+          print('  - User ID:', '있음' if client.user_id else '없음')
+          print('  - Base URL:', client.base_url)
+          "
           python auto_briefing_system.py --time ${{ steps.time_slot.outputs.time_slot }} --save
       
       - name: Upload briefing data
@@ -123,7 +133,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install -r requirements.txt
       
       - name: Set environment variables
         run: |

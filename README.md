@@ -63,6 +63,21 @@ GitHub 저장소 Settings → Secrets and variables → Actions에서 다음 키
 | `THREADS_USER_ID` | Threads 사용자 ID |
 | `SLACK_WEBHOOK_URL` | Slack 웹훅 URL (알림용) |
 
+### 4. Threads API 설정
+
+#### Threads API 액세스 토큰 생성
+1. [Facebook Developers](https://developers.facebook.com/)에서 앱 생성
+2. Threads API 권한 요청:
+   - `threads_basic` (기본 권한)
+   - `threads_content_publish` (게시 권한)
+3. 액세스 토큰 생성 및 GitHub Secrets에 등록
+
+#### Threads API 엔드포인트
+- **도메인**: `https://graph.threads.net`
+- **버전**: `v1.0`
+- **게시 엔드포인트**: `/me/threads`
+- **필수 파라미터**: `media_type: "text"`
+
 ## 🛠️ 사용법
 
 ### 1. 로컬 실행
