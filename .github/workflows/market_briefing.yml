@@ -20,7 +20,7 @@ on:
       time_slot:
         description: '실행할 시간대'
         required: true
-        default: '07:00'
+        default: 'now'
         type: choice
         options:
           - '07:00'
@@ -28,7 +28,7 @@ on:
           - '12:00'
           - '15:40'
           - '19:00'
-          - 'all'
+          - 'now'
 
 jobs:
   market-briefing:
@@ -59,7 +59,12 @@ jobs:
         id: time_slot
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "time_slot=${{ github.event.inputs.time_slot }}" >> $GITHUB_OUTPUT
+            if [ "${{ github.event.inputs.time_slot }}" = "now" ]; then
+              # 현재 시황 브리핑 - Python 스크립트로 결정
+              echo "time_slot=now" >> $GITHUB_OUTPUT
+            else
+              echo "time_slot=${{ github.event.inputs.time_slot }}" >> $GITHUB_OUTPUT
+            fi
           else
             # cron에서 시간대 결정 (UTC 시간을 KST로 변환)
             HOUR=$(date -u +%H)

@@ -53,10 +53,66 @@ class AutoBriefingSystem:
             "08:00": "오늘의 한국시장 전망",
             "12:00": "오전장 시황 요약",
             "15:40": "한국시장 마감 요약",
-            "19:00": "미국장 개장 전 체크"
+            "19:00": "미국장 개장 전 체크",
+            "now": "현재 시황 브리핑"
         }
         
         logger.info("자동 브리핑 시스템 초기화 완료")
+    
+    def get_current_briefing_type(self) -> str:
+        """
+        현재 시간에 따른 브리핑 타입 결정
+        
+        Returns:
+            str: 브리핑 타입 (07:00, 08:00, 12:00, 15:40, 19:00)
+        """
+        from datetime import datetime, time
+        
+        now = datetime.now()
+        current_time = now.time()
+        
+        # 장 시간 정의
+        korea_open = time(9, 0)
+        korea_close = time(15, 30)
+        us_open = time(22, 30)  # KST 기준
+        us_close = time(5, 0)   # KST 기준 (다음날)
+        
+        # 한국장 시간 (09:00-15:30)
+        if korea_open <= current_time <= korea_close:
+            # 오전장 (09:00-12:00)
+            if current_time < time(12, 0):
+                return "12:00"  # 오전장 시황
+            # 오후장 (12:00-15:30)
+            else:
+                return "15:40"  # 마감 브리핑
+        
+        # 미국장 시간 (22:30-05:00, 다음날)
+        elif current_time >= us_open or current_time <= us_close:
+            if current_time >= us_open:  # 22:30 이후
+                return "19:00"  # 미국장 프리뷰
+            else:  # 05:00 이전
+                return "07:00"  # 미국 마켓 마감
+        
+        # 장 외 시간
+        else:
+            # 아침 (05:00-09:00)
+            if us_close <= current_time < korea_open:
+                return "08:00"  # 한국시장 프리뷰
+            # 저녁 (15:30-22:30)
+            else:
+                return "19:00"  # 미국장 프리뷰
+    
+    def run_current_briefing(self) -> Dict[str, Any]:
+        """
+        현재 시황에 맞는 브리핑 실행
+        
+        Returns:
+            Dict: 실행 결과
+        """
+        current_type = self.get_current_briefing_type()
+        logger.info(f"현재 시황 브리핑 타입 결정: {current_type}")
+        
+        return self.run_briefing(current_type)
     
     def run_briefing(self, time_slot: str) -> Dict[str, Any]:
         """
@@ -163,8 +219,8 @@ def main():
     parser = argparse.ArgumentParser(description="자동 시장 브리핑 시스템")
     parser.add_argument(
         '--time', '-t',
-        choices=['07:00', '08:00', '12:00', '15:40', '19:00', 'all'],
-        help='실행할 시간대 (all: 모든 시간대)'
+        choices=['07:00', '08:00', '12:00', '15:40', '19:00', 'now'],
+        help='실행할 시간대 (now: 현재 시황에 맞는 브리핑)'
     )
     parser.add_argument(
         '--save', '-s',
@@ -190,20 +246,21 @@ def main():
         return
     
     # 브리핑 실행
-    if args.time == 'all':
-        print("=== 모든 시간대 브리핑 실행 ===")
-        results = system.run_all_briefings()
+    if args.time == 'now':
+        print("=== 현재 시황 브리핑 실행 ===")
+        result = system.run_current_briefing()
         
-        for time_slot, result in results.items():
-            print(f"\n--- {time_slot} 결과 ---")
-            if result['success']:
-                print(f"✅ 성공: {result['topic']}")
-                print(f"게시 결과: {result['publish_result'].get('success', False)}")
-            else:
-                print(f"❌ 실패: {result.get('error', 'Unknown error')}")
-        
-        if args.save:
-            system.save_briefing_data(results, "all_briefings.json")
+        if result['success']:
+            print(f"✅ 성공: {result['topic']}")
+            print(f"선택된 브리핑 타입: {result['time_slot']}")
+            print("\n=== 생성된 브리핑 ===")
+            print(result['briefing_content'])
+            print(f"\n게시 결과: {result['publish_result'].get('success', False)}")
+            
+            if args.save:
+                system.save_briefing_data(result, f"briefing_now_{result['time_slot'].replace(':', '')}.json")
+        else:
+            print(f"❌ 실패: {result.get('error', 'Unknown error')}")
     
     elif args.time:
         print(f"=== {args.time} 브리핑 실행 ===")
