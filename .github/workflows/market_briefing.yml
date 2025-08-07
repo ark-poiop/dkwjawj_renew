@@ -1,18 +1,18 @@
 name: Market Briefing Automation
 
 on:
-  # 스케줄 실행 (평일만)
+  # 스케줄 실행 (평일만) - KST 시간 기준
   schedule:
-    # 07:00 - 미국 마켓 마감 브리핑 (한국시간)
-    - cron: '0 7 * * 1-5'
-    # 08:00 - 한국시장 프리뷰
-    - cron: '0 8 * * 1-5'
-    # 12:00 - 한국시장 중간 브리핑
-    - cron: '0 12 * * 1-5'
-    # 15:40 - 한국시장 마감 브리핑
-    - cron: '40 15 * * 1-5'
-    # 19:00 - 미국 마켓 프리뷰
-    - cron: '0 19 * * 1-5'
+    # 07:00 - 미국 마켓 마감 브리핑 (KST 07:00 = UTC 22:00)
+    - cron: '0 22 * * 1-5'
+    # 08:00 - 한국시장 프리뷰 (KST 08:00 = UTC 23:00)
+    - cron: '0 23 * * 1-5'
+    # 12:00 - 한국시장 중간 브리핑 (KST 12:00 = UTC 03:00)
+    - cron: '0 3 * * 1-5'
+    # 15:40 - 한국시장 마감 브리핑 (KST 15:40 = UTC 06:40)
+    - cron: '40 6 * * 1-5'
+    # 19:00 - 미국 마켓 프리뷰 (KST 19:00 = UTC 10:00)
+    - cron: '0 10 * * 1-5'
   
   # 수동 실행
   workflow_dispatch:
@@ -61,7 +61,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "time_slot=${{ github.event.inputs.time_slot }}" >> $GITHUB_OUTPUT
           else
-            # cron에서 시간대 결정
+            # cron에서 시간대 결정 (UTC 시간을 KST로 변환)
             HOUR=$(date -u +%H)
             case $HOUR in
               22) echo "time_slot=07:00" >> $GITHUB_OUTPUT ;;  # UTC 22:00 = KST 07:00
@@ -114,10 +114,10 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         continue-on-error: true
 
-  # 시스템 상태 모니터링 (매일 오전 6시)
+  # 시스템 상태 모니터링 (매일 오전 6시 KST = UTC 21:00)
   system-monitor:
     runs-on: ubuntu-latest
-    if: github.event.schedule == '0 6 * * 1-5'
+    if: github.event.schedule == '0 21 * * 1-5'
     
     steps:
       - name: Checkout repository
