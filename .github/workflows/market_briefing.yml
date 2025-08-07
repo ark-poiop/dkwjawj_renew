@@ -63,14 +63,17 @@ jobs:
           else
             # cron에서 시간대 결정 (UTC 시간을 KST로 변환)
             HOUR=$(date -u +%H)
+            echo "Current UTC hour: $HOUR"
             case $HOUR in
               22) echo "time_slot=07:00" >> $GITHUB_OUTPUT ;;  # UTC 22:00 = KST 07:00
               23) echo "time_slot=08:00" >> $GITHUB_OUTPUT ;;  # UTC 23:00 = KST 08:00
               3) echo "time_slot=12:00" >> $GITHUB_OUTPUT ;;   # UTC 03:00 = KST 12:00
               6) echo "time_slot=15:40" >> $GITHUB_OUTPUT ;;   # UTC 06:40 = KST 15:40
               10) echo "time_slot=19:00" >> $GITHUB_OUTPUT ;;  # UTC 10:00 = KST 19:00
-              *) echo "time_slot=07:00" >> $GITHUB_OUTPUT ;;
+              12) echo "time_slot=19:00" >> $GITHUB_OUTPUT ;;  # UTC 12:00 = KST 21:00 (저녁 시간대)
+              *) echo "time_slot=07:00" >> $GITHUB_OUTPUT ;;   # 기본값
             esac
+            echo "Determined time slot: ${{ steps.time_slot.outputs.time_slot }}"
           fi
       
       - name: Create safe artifact name
