@@ -149,10 +149,10 @@ class MarketCrawlerStrategy:
         """국내 백업 데이터 생성"""
         logger.info("국내 백업 데이터 생성")
         
-        # 실제 시장과 유사한 기준값
+        # 실제 시장과 유사한 기준값 (2025년 8월 기준)
         base_data = {
-            "KOSPI": 3227.68,
-            "KOSDAQ": 805.81
+            "KOSPI": 3400.00,  # 2025년 현재 상승 추세
+            "KOSDAQ": 850.00   # 2025년 현재 상승 추세
         }
         
         # 시간대별 변동
@@ -245,13 +245,13 @@ class MarketCrawlerStrategy:
         else:  # 밤
             base_multiplier = 1.0 + random.uniform(-0.005, 0.005)  # ±0.5% 변동
         
-        # 실제 시장과 유사한 기준값
+        # 실제 시장과 유사한 기준값 (2025년 8월 기준)
         base_data = {
-            "KOSPI": 3227.68,
-            "KOSDAQ": 805.81,
-            "S&P500": 5500.12,
-            "NASDAQ": 17900.45,
-            "DOW": 38500.00
+            "KOSPI": 3400.00,
+            "KOSDAQ": 850.00,
+            "S&P500": 5800.00,
+            "NASDAQ": 19500.00,
+            "DOW": 42000.00
         }
         
         # 변동폭 (실제 시장과 유사)
