@@ -34,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 모듈 import
-from kis_api_client import KISAPIClient
+from market_data_strategy import MarketDataStrategy
 from market_briefing_generator import MarketBriefingGenerator
 from threads_api_client import ThreadsPublisher
 
@@ -43,7 +43,7 @@ class AutoBriefingSystem:
     """자동 브리핑 시스템"""
     
     def __init__(self):
-        self.kis_client = KISAPIClient()
+        self.market_strategy = MarketDataStrategy()
         self.briefing_generator = MarketBriefingGenerator()
         self.threads_publisher = ThreadsPublisher()
         
@@ -71,14 +71,14 @@ class AutoBriefingSystem:
         try:
             logger.info(f"브리핑 실행 시작: {time_slot}")
             
-            # 1. 시장 데이터 수집
-            logger.info("1단계: 시장 데이터 수집")
-            market_data = self.kis_client.get_market_data()
+            # 1. 전략적 시장 데이터 수집
+            logger.info("1단계: 전략적 시장 데이터 수집")
+            market_data = self.market_strategy.get_market_data_with_strategy(time_slot)
             
             if not market_data:
                 raise Exception("시장 데이터 수집 실패")
             
-            logger.info(f"데이터 수집 완료: {len(market_data.get('indices', {}))}개 지수")
+            logger.info(f"데이터 수집 완료: {len(market_data.get('indices', {}))}개 지수 (소스: {market_data.get('source', 'unknown')})")
             
             # 2. 브리핑 생성
             logger.info("2단계: 브리핑 생성")
@@ -135,7 +135,7 @@ class AutoBriefingSystem:
     def get_system_status(self) -> Dict[str, Any]:
         """시스템 상태 조회"""
         return {
-            "kis_api_available": bool(self.kis_client.trenv),
+            "kis_api_available": bool(self.market_strategy.kis_client.trenv),
             "threads_api_available": bool(self.threads_publisher.client.access_token),
             "total_posts": len(self.threads_publisher.get_post_history()),
             "last_post": self.threads_publisher.get_post_stats().get("last_post"),

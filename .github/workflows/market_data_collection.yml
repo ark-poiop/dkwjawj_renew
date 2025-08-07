@@ -1,0 +1,129 @@
+name: Market Data Collection
+
+on:
+  # 장 마감 직전 데이터 수집 (평일만)
+  schedule:
+    # 한국시장 마감 직전 (15:25 KST = UTC 06:25)
+    - cron: '25 6 * * 1-5'
+    # 미국시장 마감 직전 (04:55 KST = UTC 19:55, 전날)
+    - cron: '55 19 * * 1-5'
+  
+  # 수동 실행
+  workflow_dispatch:
+    inputs:
+      data_type:
+        description: '수집할 데이터 타입'
+        required: true
+        default: 'closing'
+        type: choice
+        options:
+          - 'closing'
+          - 'midday'
+          - 'opening'
+
+jobs:
+  collect-market-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Set environment variables
+        run: |
+          echo "KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}" >> $GITHUB_ENV
+          echo "KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}" >> $GITHUB_ENV
+      
+      - name: Determine collection type
+        id: collection_type
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "collection_type=${{ github.event.inputs.data_type }}" >> $GITHUB_OUTPUT
+          else
+            # cron에서 수집 타입 결정
+            HOUR=$(date -u +%H)
+            case $HOUR in
+              6) echo "collection_type=closing" >> $GITHUB_OUTPUT ;;   # UTC 06:25 = KST 15:25 (한국 마감)
+              19) echo "collection_type=closing" >> $GITHUB_OUTPUT ;;  # UTC 19:55 = KST 04:55 (미국 마감)
+              *) echo "collection_type=closing" >> $GITHUB_OUTPUT ;;
+            esac
+          fi
+      
+      - name: Collect market data
+        run: |
+          echo "시장 데이터 수집 시작: ${{ steps.collection_type.outputs.collection_type }}"
+          python -c "
+          from market_data_strategy import MarketDataStrategy
+          strategy = MarketDataStrategy()
+          
+          # 실시간 데이터 수집 시도
+          market_data = strategy._get_realtime_data()
+          
+          if strategy._is_valid_realtime_data(market_data):
+              # 유효한 데이터면 저장
+              success = strategy.storage.save_market_data(
+                  market_data, 
+                  '${{ steps.collection_type.outputs.collection_type }}'
+              )
+              if success:
+                  print('✅ 시장 데이터 수집 및 저장 완료')
+                  print(f'데이터 소스: {market_data.get(\"source\", \"unknown\")}')
+                  print('수집된 지수:')
+                  for index_name, price in market_data.get('indices', {}).items():
+                      change = market_data.get('changes', {}).get(index_name, 0)
+                      print(f'  {index_name}: {price} ({change:+.2f})')
+              else:
+                  print('❌ 시장 데이터 저장 실패')
+                  exit(1)
+          else:
+              print('⚠️ 유효한 실시간 데이터가 없어 저장하지 않음')
+              print('현재 수집된 데이터:')
+              for index_name, price in market_data.get('indices', {}).items():
+                  change = market_data.get('changes', {}).get(index_name, 0)
+                  print(f'  {index_name}: {price} ({change:+.2f})')
+          "
+      
+      - name: Upload market data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: market-data-${{ steps.collection_type.outputs.collection_type }}
+          path: |
+            market_data/
+          retention-days: 30
+      
+      - name: List collected data
+        run: |
+          echo "=== 수집된 데이터 목록 ==="
+          python -c "
+          from market_data_storage import MarketDataStorage
+          storage = MarketDataStorage()
+          available = storage.list_available_data()
+          print('사용 가능한 데이터:')
+          for date, types in available.items():
+              print(f'  {date}: {types}')
+          "
+      
+      - name: Notify on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#market-briefing'
+          text: |
+            시장 데이터 수집 실패:
+            - 수집 타입: ${{ steps.collection_type.outputs.collection_type }}
+            - 실행 시간: ${{ github.run_id }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
