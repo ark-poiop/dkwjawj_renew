@@ -11,7 +11,7 @@ from datetime import datetime, time
 import random
 import time as time_module
 
-from yahoo_finance_crawler import YahooFinanceCrawler
+from yfinance_client import YahooFinanceClient
 from kis_api_client import KISAPIClient
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class MarketCrawlerStrategy:
     """통합 시장 데이터 수집 전략"""
     
     def __init__(self):
-        self.yahoo_crawler = YahooFinanceCrawler()
+        self.yahoo_client = YahooFinanceClient()
         self.kis_client = KISAPIClient()
         
         # 장 시간 정의
@@ -55,7 +55,7 @@ class MarketCrawlerStrategy:
     
     def get_market_data_with_crawling(self, time_slot: str) -> Dict[str, Any]:
         """
-        통합 시장 데이터 수집
+        실시간 데이터 우선 시장 데이터 수집
         
         Args:
             time_slot: 브리핑 시간대
@@ -64,48 +64,24 @@ class MarketCrawlerStrategy:
             Dict[str, Any]: 시장 데이터
         """
         try:
-            logger.info(f"통합 시장 데이터 수집 시작: {time_slot}")
+            logger.info(f"실시간 데이터 우선 수집 시작: {time_slot}")
             
-            market_data = {
-                "indices": {},
-                "changes": {},
-                "source": "mixed",
-                "timestamp": datetime.now().isoformat()
-            }
+            # 1단계: 실시간 데이터 수집 시도
+            realtime_data = self._get_realtime_data()
+            if realtime_data and self._is_valid_realtime_data(realtime_data):
+                logger.info("실시간 데이터 사용")
+                return realtime_data
             
-            # 해외 시장 데이터 수집 (Yahoo Finance)
-            overseas_data = self._get_overseas_data()
-            if overseas_data:
-                market_data["indices"].update(overseas_data.get("indices", {}))
-                market_data["changes"].update(overseas_data.get("changes", {}))
-                logger.info(f"해외 데이터 수집 완료: {len(overseas_data.get('indices', {}))}개")
-            
-            # 요청 간 딜레이
-            time_module.sleep(random.uniform(2, 4))
-            
-            # 국내 시장 데이터 수집 (KIS API 또는 백업)
-            domestic_data = self._get_domestic_data()
-            if domestic_data:
-                market_data["indices"].update(domestic_data.get("indices", {}))
-                market_data["changes"].update(domestic_data.get("changes", {}))
-                logger.info(f"국내 데이터 수집 완료: {len(domestic_data.get('indices', {}))}개")
-            
-            # 데이터 유효성 검사
-            if self._is_valid_crawled_data(market_data):
-                market_data["source"] = "mixed_success"
-                logger.info(f"통합 데이터 수집 성공: {len(market_data.get('indices', {}))}개 지수")
-            else:
-                logger.warning("통합 데이터가 유효하지 않음, 백업 데이터 사용")
-                backup_data = self._get_backup_data(time_slot)
-                market_data.update(backup_data)
-                market_data["source"] = "backup_data"
-            
-            return market_data
+            # 2단계: 실시간 데이터가 없으면 백업 데이터 사용
+            logger.info("실시간 데이터 없음, 백업 데이터 사용")
+            backup_data = self._get_backup_data(time_slot)
+            backup_data["source"] = "backup_data_no_realtime"
+            return backup_data
             
         except Exception as e:
-            logger.error(f"통합 데이터 수집 중 오류: {e}")
+            logger.error(f"시장 데이터 수집 중 오류: {e}")
             backup_data = self._get_backup_data(time_slot)
-            backup_data["source"] = "mixed_error_backup"
+            backup_data["source"] = "error_backup"
             return backup_data
     
     def _get_domestic_data(self) -> Optional[Dict[str, Any]]:
@@ -183,10 +159,10 @@ class MarketCrawlerStrategy:
         }
     
     def _get_overseas_data(self) -> Optional[Dict[str, Any]]:
-        """해외 시장 데이터 수집 (Yahoo Finance)"""
+        """해외 시장 데이터 수집 (Yahoo Finance API)"""
         try:
-            logger.info("Yahoo Finance에서 해외 데이터 수집")
-            return self.yahoo_crawler.get_overseas_market_data()
+            logger.info("Yahoo Finance API에서 해외 데이터 수집")
+            return self.yahoo_client.get_overseas_market_data()
         except Exception as e:
             logger.error(f"해외 데이터 수집 실패: {e}")
             return None
@@ -197,6 +173,55 @@ class MarketCrawlerStrategy:
         
         Args:
             data: 수집된 데이터
+            
+        Returns:
+            bool: 데이터 유효성
+        """
+        if not data:
+            return False
+        
+        indices = data.get('indices', {})
+        if not indices:
+            return False
+        
+        # 최소 2개 이상의 지수가 있어야 함
+        if len(indices) < 2:
+            return False
+        
+        # 모든 가격이 0보다 커야 함
+        for price in indices.values():
+            if price <= 0:
+                return False
+        
+        return True
+    
+    def _get_realtime_data(self) -> Optional[Dict[str, Any]]:
+        """실시간 데이터 수집 시도"""
+        try:
+            logger.info("실시간 데이터 수집 시도")
+            
+            # 실시간 데이터 수집기 사용
+            from real_time_market_data import RealTimeMarketData
+            realtime_collector = RealTimeMarketData()
+            
+            realtime_data = realtime_collector.get_real_time_data()
+            
+            if realtime_data and realtime_data.get("indices"):
+                logger.info(f"실시간 데이터 수집 성공: {len(realtime_data.get('indices', {}))}개 지수")
+                return realtime_data
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"실시간 데이터 수집 실패: {e}")
+            return None
+    
+    def _is_valid_realtime_data(self, data: Dict[str, Any]) -> bool:
+        """
+        실시간 데이터 유효성 검사
+        
+        Args:
+            data: 실시간 데이터
             
         Returns:
             bool: 데이터 유효성

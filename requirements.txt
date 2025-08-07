@@ -28,4 +28,7 @@ pytest-cov>=4.0.0
 beautifulsoup4==4.12.2
 lxml==4.9.3
 selenium==4.15.2
-webdriver-manager==4.0.1 
+webdriver-manager==4.0.1
+
+# Yahoo Finance API
+yfinance>=0.2.65 
