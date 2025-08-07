@@ -63,6 +63,7 @@ jobs:
         run: |
           echo "크롤링을 통한 시장 데이터 수집 시작: ${{ steps.collection_type.outputs.collection_type }}"
           python -c "
+          from datetime import datetime
           from market_data_strategy import MarketDataStrategy
           strategy = MarketDataStrategy()
           
