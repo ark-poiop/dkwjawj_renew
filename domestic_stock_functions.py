@@ -12,6 +12,25 @@ from typing import Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
+def _ensure_auth():
+    """인증 상태 확인 및 필요시 재인증"""
+    try:
+        from kis_auth import getTREnv, auth
+        
+        trenv = getTREnv()
+        if not trenv or not trenv.get('access_token'):
+            logger.info("인증이 필요합니다. 재인증을 시도합니다.")
+            if auth('prod'):
+                trenv = getTREnv()
+                return trenv
+            else:
+                logger.error("인증 실패")
+                return None
+        return trenv
+    except Exception as e:
+        logger.error(f"인증 확인 중 오류: {e}")
+        return None
+
 def inquire_price(env_dv="real", fid_cond_mrkt_div_code="J", fid_input_iscd="005930"):
     """
     주식현재가 시세 조회
@@ -25,9 +44,8 @@ def inquire_price(env_dv="real", fid_cond_mrkt_div_code="J", fid_input_iscd="005
         Dict: 조회 결과
     """
     try:
-        from kis_auth import getTREnv
-        
-        trenv = getTREnv()
+        # 인증 상태 확인
+        trenv = _ensure_auth()
         if not trenv:
             logger.error("거래 환경이 설정되지 않았습니다.")
             return None

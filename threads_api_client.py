@@ -37,20 +37,20 @@ class ThreadsAPIClient:
     
     def post_thread(self, content: str, reply_to: Optional[str] = None) -> Optional[Dict]:
         """
-        Threads에 게시 (2단계 프로세스)
+        Threads에 게시
         
         Args:
             content: 게시할 내용
-            reply_to: 답글 대상 ID (선택사항)
+            reply_to: 답글 대상 게시 ID (선택사항)
             
         Returns:
-            Dict: 게시 결과
+            Dict: 게시 결과 또는 None (실패시)
         """
-        if not self.access_token or not self.user_id:
-            logger.warning("Threads 액세스 토큰 또는 사용자 ID가 없어 게시를 건너뜁니다.")
-            return self._simulate_post(content, reply_to)
-        
         try:
+            if not self.access_token:
+                logger.error("Threads API 액세스 토큰이 없습니다.")
+                return self._simulate_post(content, reply_to)
+            
             # Step 1: 미디어 컨테이너 생성
             logger.info("Step 1: 미디어 컨테이너 생성 중...")
             container_result = self._create_media_container(content)
@@ -100,7 +100,12 @@ class ThreadsAPIClient:
             logger.info(f"컨테이너 생성 Response: {response.text}")
             
             if response.status_code == 200:
-                return response.json()
+                result = response.json()
+                if 'id' in result:
+                    return result
+                else:
+                    logger.error("컨테이너 생성 응답에 ID가 없습니다")
+                    return None
             else:
                 logger.error(f"컨테이너 생성 API 오류: {response.status_code} - {response.text}")
                 return None
@@ -122,7 +127,12 @@ class ThreadsAPIClient:
             logger.info(f"컨테이너 게시 Response: {response.text}")
             
             if response.status_code == 200:
-                return response.json()
+                result = response.json()
+                if 'id' in result:
+                    return result
+                else:
+                    logger.error("컨테이너 게시 응답에 ID가 없습니다")
+                    return None
             else:
                 logger.error(f"컨테이너 게시 API 오류: {response.status_code} - {response.text}")
                 return None
@@ -131,12 +141,12 @@ class ThreadsAPIClient:
             logger.error(f"컨테이너 게시 실패: {e}")
             return None
     
-    def post_briefing(self, briefing_content: str, time_slot: str) -> Optional[Dict]:
+    def post_briefing(self, content: str, time_slot: str) -> Optional[Dict]:
         """
         브리핑 게시 (시간대별 최적화)
         
         Args:
-            briefing_content: 브리핑 내용
+            content: 브리핑 내용
             time_slot: 시간대
             
         Returns:
@@ -152,7 +162,7 @@ class ThreadsAPIClient:
         }
         
         # 시간대별 메타데이터 추가
-        enhanced_content = f"{time_metadata.get(time_slot, '📊')} {briefing_content}"
+        enhanced_content = f"{time_metadata.get(time_slot, '📊')} {content}"
         
         return self.post_thread(enhanced_content)
     
@@ -222,22 +232,46 @@ class ThreadsPublisher:
             # 게시 실행
             result = self.client.post_briefing(briefing_content, time_slot)
             
-            # 게시 기록 저장
-            post_record = {
-                "time_slot": time_slot,
-                "topic": topic,
-                "content": briefing_content,
-                "result": result,
-                "timestamp": "2024-01-01T00:00:00Z"  # 실제로는 현재 시간
-            }
-            self.post_history.append(post_record)
-            
-            logger.info(f"브리핑 게시 완료: {time_slot} - {topic}")
-            return result
+            # 게시 결과 확인
+            if result and result.get('success') and result.get('id'):
+                # 성공적인 게시
+                post_record = {
+                    "time_slot": time_slot,
+                    "topic": topic,
+                    "content": briefing_content,
+                    "result": result,
+                    "success": True,
+                    "timestamp": "2024-01-01T00:00:00Z"  # 실제로는 현재 시간
+                }
+                self.post_history.append(post_record)
+                
+                logger.info(f"✅ 브리핑 게시 성공: {time_slot} - {topic}")
+                logger.info(f"게시 ID: {result.get('id')}")
+                return result
+            else:
+                # 게시 실패
+                error_msg = "알 수 없는 오류"
+                if result:
+                    error_msg = result.get('error', '게시 실패')
+                
+                logger.error(f"❌ 브리핑 게시 실패: {time_slot} - {topic}")
+                logger.error(f"실패 이유: {error_msg}")
+                
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "time_slot": time_slot,
+                    "topic": topic
+                }
             
         except Exception as e:
-            logger.error(f"브리핑 게시 실패: {e}")
-            return {"success": False, "error": str(e)}
+            logger.error(f"브리핑 게시 중 예외 발생: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "time_slot": time_slot,
+                "topic": topic
+            }
     
     def get_post_history(self) -> List[Dict]:
         """게시 기록 조회"""
